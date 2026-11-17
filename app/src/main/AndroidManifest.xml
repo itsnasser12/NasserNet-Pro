@@ -1,5 +1,4 @@
 
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -17,10 +16,12 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
         <service
@@ -28,19 +29,24 @@
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false"
             android:foregroundServiceType="systemExempted">
+
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
+
         </service>
 
         <service
             android:name=".GameMonitorService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
+
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Continuous gaming application monitoring" />
+
         </service>
 
     </application>
+
 </manifest>

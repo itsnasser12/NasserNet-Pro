@@ -483,10 +483,11 @@ class MainActivity : Activity() {
 
     private fun requestVpnPermission() {
 
-        if (protectionState ==
-            GameFirewallVpnService.STATUS_ACTIVE ||
+        if (
             protectionState ==
-            GameFirewallVpnService.STATUS_STARTING ||
+                GameFirewallVpnService.STATUS_ACTIVE ||
+            protectionState ==
+                GameFirewallVpnService.STATUS_STARTING ||
             protectionRequestPending
         ) {
             return
@@ -599,9 +600,9 @@ class MainActivity : Activity() {
 
         if (
             protectionState ==
-            GameFirewallVpnService.STATUS_STOPPED ||
+                GameFirewallVpnService.STATUS_STOPPED ||
             protectionState ==
-            GameFirewallVpnService.STATUS_FAILED
+                GameFirewallVpnService.STATUS_FAILED
         ) {
             return
         }
@@ -816,13 +817,11 @@ class MainActivity : Activity() {
 
                 if (
                     protectionState ==
-                    GameFirewallVpnService.STATUS_ACTIVE ||
+                        GameFirewallVpnService.STATUS_ACTIVE ||
                     protectionState ==
-                    GameFirewallVpnService.STATUS_STARTING ||
+                        GameFirewallVpnService.STATUS_STARTING ||
                     protectionRequestPending
                 ) {
-                    isChecked =
-                        selectedGames.contains(app.packageName)
                     return@setOnCheckedChangeListener
                 }
 

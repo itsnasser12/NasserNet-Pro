@@ -4,6 +4,7 @@ package com.nassernet.pro
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
@@ -34,6 +35,8 @@ class GameFirewallVpnService : VpnService() {
         private const val TAG = "NasserNetVPN"
         private const val CHANNEL_ID = "nassernet_vpn_channel"
         private const val NOTIFICATION_ID = 2001
+        private const val STOP_PENDING_INTENT_ID = 2002
+        private const val OPEN_PENDING_INTENT_ID = 2003
     }
 
     private var packetEngine: VpnPacketEngine? = null
@@ -60,10 +63,12 @@ class GameFirewallVpnService : VpnService() {
 
             else -> {
                 Log.w(TAG, "Unknown VPN action")
+
                 publishStatus(
                     STATUS_FAILED,
                     "Unknown VPN action"
                 )
+
                 stopSelf()
             }
         }
@@ -75,10 +80,16 @@ class GameFirewallVpnService : VpnService() {
 
         if (packetEngine?.isRunning == true) {
             Log.i(TAG, "VPN is already running")
+
             publishStatus(
                 STATUS_ACTIVE,
                 "VPN protection is active"
             )
+
+            updateForegroundNotification(
+                "Gaming network protection is active"
+            )
+
             return
         }
 
@@ -90,14 +101,13 @@ class GameFirewallVpnService : VpnService() {
         )
 
         try {
-            // Promote the service immediately.
+
             startForegroundNotification(
                 "Starting network protection..."
             )
 
             engine = VpnPacketEngine(this)
 
-            // Establish the local VPN tunnel.
             if (!engine.start()) {
                 throw IllegalStateException(
                     "Unable to establish VPN tunnel"
@@ -110,7 +120,10 @@ class GameFirewallVpnService : VpnService() {
                 "Gaming network protection is active"
             )
 
-            Log.i(TAG, "VPN tunnel established successfully")
+            Log.i(
+                TAG,
+                "VPN tunnel established successfully"
+            )
 
             publishStatus(
                 STATUS_ACTIVE,
@@ -148,7 +161,9 @@ class GameFirewallVpnService : VpnService() {
         }
     }
 
-    private fun startForegroundNotification(message: String) {
+    private fun startForegroundNotification(
+        message: String
+    ) {
 
         val notification = buildNotification(message)
 
@@ -169,7 +184,9 @@ class GameFirewallVpnService : VpnService() {
         }
     }
 
-    private fun updateForegroundNotification(message: String) {
+    private fun updateForegroundNotification(
+        message: String
+    ) {
 
         val notification = buildNotification(message)
 
@@ -177,15 +194,64 @@ class GameFirewallVpnService : VpnService() {
             .notify(NOTIFICATION_ID, notification)
     }
 
-    private fun buildNotification(message: String): Notification {
+    private fun buildNotification(
+        message: String
+    ): Notification {
 
-        return Notification.Builder(this, CHANNEL_ID)
+        val openIntent = Intent(
+            this,
+            MainActivity::class.java
+        )
+
+        val openPendingIntent = PendingIntent.getActivity(
+            this,
+            OPEN_PENDING_INTENT_ID,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(
+            this,
+            GameFirewallVpnService::class.java
+        ).apply {
+            action = ACTION_STOP
+        }
+
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            STOP_PENDING_INTENT_ID,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopAction = Notification.Action.Builder(
+            null,
+            "STOP",
+            stopPendingIntent
+        ).build()
+
+        val builder = Notification.Builder(
+            this,
+            CHANNEL_ID
+        )
             .setContentTitle("NasserNet Pro")
             .setContentText(message)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setSmallIcon(R.drawable.ic_stat_nassernet)
+            .setContentIntent(openPendingIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .build()
+            .addAction(stopAction)
+
+        if (Build.VERSION.SDK_INT >= 31) {
+            builder.setForegroundServiceBehavior(
+                Notification.FOREGROUND_SERVICE_IMMEDIATE
+            )
+        }
+
+        return builder.build()
     }
 
     private fun createNotificationChannel() {
@@ -198,8 +264,11 @@ class GameFirewallVpnService : VpnService() {
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description =
-                    "NasserNet Pro network protection status"
+                    "Persistent NasserNet Pro VPN protection status"
+
                 setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
             }
 
             getSystemService(NotificationManager::class.java)
@@ -220,7 +289,10 @@ class GameFirewallVpnService : VpnService() {
 
         sendBroadcast(intent)
 
-        Log.i(TAG, "VPN status: $status - $message")
+        Log.i(
+            TAG,
+            "VPN status: $status - $message"
+        )
     }
 
     private fun stopProtection() {

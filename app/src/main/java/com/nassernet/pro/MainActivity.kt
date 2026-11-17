@@ -191,7 +191,7 @@ class MainActivity : Activity() {
             setHintTextColor(secondaryColor)
             setTextColor(textColor)
             textSize = 15f
-            singleLine = true
+            setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             imeOptions = EditorInfo.IME_ACTION_SEARCH
             setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -210,6 +210,7 @@ class MainActivity : Activity() {
         )
 
         searchInput.addTextChangedListener(object : TextWatcher {
+
             override fun beforeTextChanged(
                 s: CharSequence?,
                 start: Int,

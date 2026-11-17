@@ -40,9 +40,7 @@ class GameFirewallVpnService : VpnService() {
 
         when (intent?.action) {
 
-            ACTION_START -> {
-                startProtection()
-            }
+            ACTION_START -> startProtection(startId)
 
             ACTION_STOP -> {
                 stopProtection()
@@ -50,7 +48,7 @@ class GameFirewallVpnService : VpnService() {
             }
 
             else -> {
-                Log.w(TAG, "Unknown VPN service action")
+                Log.w(TAG, "Unknown VPN action")
                 stopSelf()
             }
         }
@@ -58,42 +56,50 @@ class GameFirewallVpnService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun startProtection() {
+    private fun startProtection(startId: Int) {
+
+        if (packetEngine?.isRunning == true) {
+            Log.i(TAG, "VPN is already running")
+            return
+        }
+
+        var engine: VpnPacketEngine? = null
 
         try {
-            startForegroundNotification()
+            engine = VpnPacketEngine(this)
 
-            if (packetEngine?.isRunning == true) {
-                Log.i(TAG, "VPN is already running")
-                return
-            }
-
-            val engine = VpnPacketEngine(this)
-
-            val started = engine.start()
-
-            if (!started) {
-                Log.e(TAG, "Failed to establish VPN tunnel")
+            // Establish the VPN tunnel first.
+            if (!engine.start()) {
+                Log.e(TAG, "Unable to establish VPN tunnel")
                 engine.stop()
-                stopProtection()
-                stopSelf()
+                stopSelf(startId)
                 return
             }
 
             packetEngine = engine
 
-            Log.i(TAG, "NasserNet VPN started successfully")
+            // Promote the service after successful tunnel creation.
+            startForegroundNotification()
+
+            Log.i(TAG, "VPN tunnel established successfully")
 
         } catch (exception: Exception) {
 
             Log.e(
                 TAG,
-                "Failed to start VPN protection",
+                "VPN startup failed",
                 exception
             )
 
+            try {
+                engine?.stop()
+            } catch (stopException: Exception) {
+                Log.e(TAG, "Tunnel cleanup failed", stopException)
+            }
+
+            packetEngine = null
             stopProtection()
-            stopSelf()
+            stopSelf(startId)
         }
     }
 
@@ -137,15 +143,12 @@ class GameFirewallVpnService : VpnService() {
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description =
-                    "Shows the status of NasserNet network protection"
-
+                    "NasserNet Pro network protection status"
                 setShowBadge(false)
             }
 
-            val manager =
-                getSystemService(NotificationManager::class.java)
-
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }
     }
 
@@ -161,18 +164,23 @@ class GameFirewallVpnService : VpnService() {
 
             Log.e(
                 TAG,
-                "Error while stopping VPN",
+                "Error stopping VPN",
                 exception
             )
 
         } finally {
 
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
         }
     }
 
     override fun onRevoke() {
-        Log.w(TAG, "VPN permission revoked by system or user")
+        Log.w(TAG, "VPN permission revoked")
 
         stopProtection()
         stopSelf()

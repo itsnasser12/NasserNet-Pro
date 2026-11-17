@@ -26,12 +26,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
+          cmdline-tools-version: 14742923
           packages: 'platform-tools'
+
+      - name: Verify Android SDK
+        run: |
+          echo "Android SDK: $ANDROID_HOME"
+          sdkmanager --version
+          sdkmanager --list_installed
 
       - name: Install SDK packages
         run: |
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
-          sdkmanager --list_installed
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -40,7 +46,7 @@ jobs:
 
       - name: Build and test
         run: |
-          gradle --no-daemon clean testDebugUnitTest assembleDebug --stacktrace --info
+          gradle --no-daemon clean testDebugUnitTest assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

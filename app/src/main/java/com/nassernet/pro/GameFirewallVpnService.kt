@@ -20,6 +20,17 @@ class GameFirewallVpnService : VpnService() {
         const val ACTION_STOP =
             "com.nassernet.pro.action.STOP_VPN"
 
+        const val ACTION_STATUS =
+            "com.nassernet.pro.action.VPN_STATUS"
+
+        const val EXTRA_STATUS = "vpn_status"
+        const val EXTRA_MESSAGE = "vpn_message"
+
+        const val STATUS_STARTING = "STARTING"
+        const val STATUS_ACTIVE = "ACTIVE"
+        const val STATUS_FAILED = "FAILED"
+        const val STATUS_STOPPED = "STOPPED"
+
         private const val TAG = "NasserNetVPN"
         private const val CHANNEL_ID = "nassernet_vpn_channel"
         private const val NOTIFICATION_ID = 2001
@@ -49,6 +60,10 @@ class GameFirewallVpnService : VpnService() {
 
             else -> {
                 Log.w(TAG, "Unknown VPN action")
+                publishStatus(
+                    STATUS_FAILED,
+                    "Unknown VPN action"
+                )
                 stopSelf()
             }
         }
@@ -60,28 +75,47 @@ class GameFirewallVpnService : VpnService() {
 
         if (packetEngine?.isRunning == true) {
             Log.i(TAG, "VPN is already running")
+            publishStatus(
+                STATUS_ACTIVE,
+                "VPN protection is active"
+            )
             return
         }
 
         var engine: VpnPacketEngine? = null
 
+        publishStatus(
+            STATUS_STARTING,
+            "Starting VPN protection"
+        )
+
         try {
+            // Promote the service immediately.
+            startForegroundNotification(
+                "Starting network protection..."
+            )
+
             engine = VpnPacketEngine(this)
 
-            // Establish the VPN tunnel first.
+            // Establish the local VPN tunnel.
             if (!engine.start()) {
-                Log.e(TAG, "Unable to establish VPN tunnel")
-                engine.stop()
-                stopSelf(startId)
-                return
+                throw IllegalStateException(
+                    "Unable to establish VPN tunnel"
+                )
             }
 
             packetEngine = engine
 
-            // Promote the service after successful tunnel creation.
-            startForegroundNotification()
+            updateForegroundNotification(
+                "Gaming network protection is active"
+            )
 
             Log.i(TAG, "VPN tunnel established successfully")
+
+            publishStatus(
+                STATUS_ACTIVE,
+                "VPN protection is active"
+            )
 
         } catch (exception: Exception) {
 
@@ -94,27 +128,29 @@ class GameFirewallVpnService : VpnService() {
             try {
                 engine?.stop()
             } catch (stopException: Exception) {
-                Log.e(TAG, "Tunnel cleanup failed", stopException)
+                Log.e(
+                    TAG,
+                    "Tunnel cleanup failed",
+                    stopException
+                )
             }
 
             packetEngine = null
-            stopProtection()
+            removeForegroundNotification()
+
+            publishStatus(
+                STATUS_FAILED,
+                exception.localizedMessage
+                    ?: "VPN startup failed"
+            )
+
             stopSelf(startId)
         }
     }
 
-    private fun startForegroundNotification() {
+    private fun startForegroundNotification(message: String) {
 
-        val notification = Notification.Builder(
-            this,
-            CHANNEL_ID
-        )
-            .setContentTitle("NasserNet Pro")
-            .setContentText("Gaming network protection is active")
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setOngoing(true)
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .build()
+        val notification = buildNotification(message)
 
         if (Build.VERSION.SDK_INT >= 34) {
 
@@ -131,6 +167,25 @@ class GameFirewallVpnService : VpnService() {
                 notification
             )
         }
+    }
+
+    private fun updateForegroundNotification(message: String) {
+
+        val notification = buildNotification(message)
+
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun buildNotification(message: String): Notification {
+
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("NasserNet Pro")
+            .setContentText(message)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setOngoing(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .build()
     }
 
     private fun createNotificationChannel() {
@@ -152,13 +207,39 @@ class GameFirewallVpnService : VpnService() {
         }
     }
 
+    private fun publishStatus(
+        status: String,
+        message: String
+    ) {
+
+        val intent = Intent(ACTION_STATUS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_STATUS, status)
+            putExtra(EXTRA_MESSAGE, message)
+        }
+
+        sendBroadcast(intent)
+
+        Log.i(TAG, "VPN status: $status - $message")
+    }
+
     private fun stopProtection() {
+
+        cleanupProtection()
+
+        publishStatus(
+            STATUS_STOPPED,
+            "VPN protection stopped"
+        )
+
+        Log.i(TAG, "VPN protection stopped")
+    }
+
+    private fun cleanupProtection() {
 
         try {
             packetEngine?.stop()
             packetEngine = null
-
-            Log.i(TAG, "VPN protection stopped")
 
         } catch (exception: Exception) {
 
@@ -169,17 +250,22 @@ class GameFirewallVpnService : VpnService() {
             )
 
         } finally {
+            removeForegroundNotification()
+        }
+    }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
-            }
+    private fun removeForegroundNotification() {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
         }
     }
 
     override fun onRevoke() {
+
         Log.w(TAG, "VPN permission revoked")
 
         stopProtection()
@@ -189,7 +275,9 @@ class GameFirewallVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        stopProtection()
+
+        cleanupProtection()
+
         super.onDestroy()
     }
 

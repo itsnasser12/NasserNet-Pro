@@ -1,22 +1,14 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Package visibility -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-    <!-- Foreground service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
 
-    <!-- Notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Usage access -->
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
 
     <application
         android:allowBackup="false"
@@ -43,17 +35,6 @@
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
-
-        </service>
-
-        <service
-            android:name=".GameMonitorService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Continuous gaming application monitoring" />
 
         </service>
 

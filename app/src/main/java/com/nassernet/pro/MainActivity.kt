@@ -1,18 +1,20 @@
 
 package com.nassernet.pro
 
+import android.Manifest
 import android.app.Activity
-import android.net.VpnService
-import android.os.Bundle
-import android.os.Build
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.content.res.ColorStateList
+import android.net.VpnService
+import android.os.Build
+import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -30,6 +32,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val VPN_REQUEST_CODE = 501
+        private const val NOTIFICATION_REQUEST_CODE = 502
     }
 
     private val backgroundColor = Color.rgb(12, 25, 43)
@@ -504,6 +507,30 @@ class MainActivity : Activity() {
             return
         }
 
+        // Request notification permission before starting protection.
+        if (
+            Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            protectionRequestPending = true
+            updateProtectionUi()
+
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_REQUEST_CODE
+            )
+
+            return
+        }
+
+        continueVpnPermissionFlow()
+    }
+
+    private fun continueVpnPermissionFlow() {
+
         val permissionIntent = VpnService.prepare(this)
 
         if (permissionIntent != null) {
@@ -519,6 +546,44 @@ class MainActivity : Activity() {
         } else {
 
             startVpnService()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+
+        super.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults
+        )
+
+        if (requestCode == NOTIFICATION_REQUEST_CODE) {
+
+            protectionRequestPending = false
+
+            val granted =
+                grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+
+            if (granted) {
+
+                updateProtectionUi()
+                continueVpnPermissionFlow()
+
+            } else {
+
+                updateProtectionUi()
+
+                Toast.makeText(
+                    this,
+                    "Notification permission is required for visible VPN status",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 

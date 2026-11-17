@@ -5,7 +5,10 @@ import android.app.Activity
 import android.net.VpnService
 import android.os.Bundle
 import android.os.Build
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -47,8 +50,51 @@ class MainActivity : Activity() {
 
     private var showingSystemApps = false
     private var protectionRequestPending = false
+    private var receiverRegistered = false
+
+    private var protectionState =
+        GameFirewallVpnService.STATUS_STOPPED
 
     private val selectedGames = mutableSetOf<String>()
+
+    private val vpnStatusReceiver = object : BroadcastReceiver() {
+
+        override fun onReceive(
+            context: Context?,
+            intent: Intent?
+        ) {
+
+            if (intent?.action !=
+                GameFirewallVpnService.ACTION_STATUS
+            ) {
+                return
+            }
+
+            val newStatus = intent.getStringExtra(
+                GameFirewallVpnService.EXTRA_STATUS
+            ) ?: return
+
+            val message = intent.getStringExtra(
+                GameFirewallVpnService.EXTRA_MESSAGE
+            ) ?: ""
+
+            protectionState = newStatus
+
+            runOnUiThread {
+                updateProtectionUi()
+
+                if (newStatus ==
+                    GameFirewallVpnService.STATUS_FAILED
+                ) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        message,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
@@ -60,6 +106,7 @@ class MainActivity : Activity() {
         color: Int,
         bold: Boolean = false
     ): TextView {
+
         return TextView(this).apply {
             text = value
             textSize = size
@@ -72,6 +119,7 @@ class MainActivity : Activity() {
     }
 
     private fun makeButton(value: String): Button {
+
         return Button(this).apply {
             text = value
             textSize = 13f
@@ -95,6 +143,62 @@ class MainActivity : Activity() {
 
         buildScreen()
         showApps()
+        updateProtectionUi()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        registerVpnStatusReceiver()
+    }
+
+    override fun onStop() {
+        unregisterVpnStatusReceiver()
+        super.onStop()
+    }
+
+    private fun registerVpnStatusReceiver() {
+
+        if (receiverRegistered) {
+            return
+        }
+
+        val filter = IntentFilter(
+            GameFirewallVpnService.ACTION_STATUS
+        )
+
+        if (Build.VERSION.SDK_INT >= 33) {
+
+            registerReceiver(
+                vpnStatusReceiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+
+        } else {
+
+            @Suppress("DEPRECATION")
+            registerReceiver(
+                vpnStatusReceiver,
+                filter
+            )
+        }
+
+        receiverRegistered = true
+    }
+
+    private fun unregisterVpnStatusReceiver() {
+
+        if (!receiverRegistered) {
+            return
+        }
+
+        try {
+            unregisterReceiver(vpnStatusReceiver)
+        } catch (exception: Exception) {
+            // Receiver may already be unregistered.
+        }
+
+        receiverRegistered = false
     }
 
     private fun buildScreen() {
@@ -187,6 +291,7 @@ class MainActivity : Activity() {
 
         startButton = makeButton("START PROTECTION").apply {
             setBackgroundColor(Color.rgb(30, 150, 90))
+
             setOnClickListener {
                 requestVpnPermission()
             }
@@ -194,6 +299,7 @@ class MainActivity : Activity() {
 
         stopButton = makeButton("STOP PROTECTION").apply {
             setBackgroundColor(Color.rgb(190, 65, 65))
+
             setOnClickListener {
                 stopProtection()
             }
@@ -377,7 +483,17 @@ class MainActivity : Activity() {
 
     private fun requestVpnPermission() {
 
+        if (protectionState ==
+            GameFirewallVpnService.STATUS_ACTIVE ||
+            protectionState ==
+            GameFirewallVpnService.STATUS_STARTING ||
+            protectionRequestPending
+        ) {
+            return
+        }
+
         if (selectedGames.isEmpty()) {
+
             Toast.makeText(
                 this,
                 "Select at least one game first",
@@ -387,15 +503,12 @@ class MainActivity : Activity() {
             return
         }
 
-        if (protectionRequestPending) {
-            return
-        }
-
         val permissionIntent = VpnService.prepare(this)
 
         if (permissionIntent != null) {
 
             protectionRequestPending = true
+            updateProtectionUi()
 
             startActivityForResult(
                 permissionIntent,
@@ -414,6 +527,7 @@ class MainActivity : Activity() {
         resultCode: Int,
         data: Intent?
     ) {
+
         super.onActivityResult(
             requestCode,
             resultCode,
@@ -425,8 +539,16 @@ class MainActivity : Activity() {
             protectionRequestPending = false
 
             if (resultCode == RESULT_OK) {
+
                 startVpnService()
+
             } else {
+
+                protectionState =
+                    GameFirewallVpnService.STATUS_STOPPED
+
+                updateProtectionUi()
+
                 Toast.makeText(
                     this,
                     "VPN permission was not granted",
@@ -453,31 +575,36 @@ class MainActivity : Activity() {
                 startService(intent)
             }
 
-            protectionStatusText.text =
-                "PROTECTION: START REQUESTED"
+            protectionState =
+                GameFirewallVpnService.STATUS_STARTING
 
-            protectionStatusText.setTextColor(
-                accentColor
-            )
+            updateProtectionUi()
 
         } catch (exception: Exception) {
+
+            protectionState =
+                GameFirewallVpnService.STATUS_FAILED
+
+            updateProtectionUi()
 
             Toast.makeText(
                 this,
                 "Unable to start VPN service: ${exception.message}",
                 Toast.LENGTH_LONG
             ).show()
-
-            protectionStatusText.text =
-                "PROTECTION: START FAILED"
-
-            protectionStatusText.setTextColor(
-                Color.RED
-            )
         }
     }
 
     private fun stopProtection() {
+
+        if (
+            protectionState ==
+            GameFirewallVpnService.STATUS_STOPPED ||
+            protectionState ==
+            GameFirewallVpnService.STATUS_FAILED
+        ) {
+            return
+        }
 
         val intent = Intent(
             this,
@@ -490,13 +617,6 @@ class MainActivity : Activity() {
 
             startService(intent)
 
-            protectionStatusText.text =
-                "PROTECTION: STOP REQUESTED"
-
-            protectionStatusText.setTextColor(
-                Color.rgb(255, 190, 60)
-            )
-
         } catch (exception: Exception) {
 
             Toast.makeText(
@@ -505,6 +625,70 @@ class MainActivity : Activity() {
                 Toast.LENGTH_LONG
             ).show()
         }
+    }
+
+    private fun updateProtectionUi() {
+
+        when (protectionState) {
+
+            GameFirewallVpnService.STATUS_STARTING -> {
+
+                protectionStatusText.text =
+                    "PROTECTION: STARTING..."
+
+                protectionStatusText.setTextColor(
+                    accentColor
+                )
+            }
+
+            GameFirewallVpnService.STATUS_ACTIVE -> {
+
+                protectionStatusText.text =
+                    "PROTECTION: ACTIVE"
+
+                protectionStatusText.setTextColor(
+                    Color.rgb(60, 220, 120)
+                )
+            }
+
+            GameFirewallVpnService.STATUS_FAILED -> {
+
+                protectionStatusText.text =
+                    "PROTECTION: FAILED"
+
+                protectionStatusText.setTextColor(
+                    Color.RED
+                )
+            }
+
+            else -> {
+
+                protectionStatusText.text =
+                    "PROTECTION: OFF"
+
+                protectionStatusText.setTextColor(
+                    Color.rgb(255, 190, 60)
+                )
+            }
+        }
+
+        val isLocked =
+            protectionState ==
+                GameFirewallVpnService.STATUS_STARTING ||
+            protectionState ==
+                GameFirewallVpnService.STATUS_ACTIVE ||
+            protectionRequestPending
+
+        startButton.isEnabled = !isLocked
+        stopButton.isEnabled = isLocked
+
+        startButton.alpha =
+            if (isLocked) 0.5f else 1f
+
+        stopButton.alpha =
+            if (isLocked) 1f else 0.5f
+
+        showApps()
     }
 
     private fun updateTabButtons() {
@@ -620,8 +804,27 @@ class MainActivity : Activity() {
             buttonTintList =
                 ColorStateList.valueOf(accentColor)
 
+            isEnabled =
+                protectionState !=
+                    GameFirewallVpnService.STATUS_ACTIVE &&
+                protectionState !=
+                    GameFirewallVpnService.STATUS_STARTING &&
+                !protectionRequestPending
+
             setOnCheckedChangeListener {
-                    _, isChecked ->
+                _, isChecked ->
+
+                if (
+                    protectionState ==
+                    GameFirewallVpnService.STATUS_ACTIVE ||
+                    protectionState ==
+                    GameFirewallVpnService.STATUS_STARTING ||
+                    protectionRequestPending
+                ) {
+                    isChecked =
+                        selectedGames.contains(app.packageName)
+                    return@setOnCheckedChangeListener
+                }
 
                 if (isChecked) {
                     selectedGames.add(app.packageName)
@@ -661,6 +864,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateStatus() {
+
         statusText.text =
             "Selected games: ${selectedGames.size}"
     }

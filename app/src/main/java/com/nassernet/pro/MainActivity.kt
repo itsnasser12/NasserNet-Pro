@@ -151,7 +151,11 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+
         registerVpnStatusReceiver()
+
+        // Retrieve the actual VPN status whenever the app opens.
+        requestCurrentVpnStatus()
     }
 
     override fun onStop() {
@@ -187,6 +191,34 @@ class MainActivity : Activity() {
         }
 
         receiverRegistered = true
+    }
+
+    private fun requestCurrentVpnStatus() {
+
+        val intent = Intent(
+            this,
+            GameFirewallVpnService::class.java
+        ).apply {
+            action = GameFirewallVpnService.ACTION_STATUS
+        }
+
+        try {
+
+            startService(intent)
+
+        } catch (exception: Exception) {
+
+            protectionState =
+                GameFirewallVpnService.STATUS_FAILED
+
+            updateProtectionUi()
+
+            Toast.makeText(
+                this,
+                "Unable to retrieve VPN status: ${exception.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun unregisterVpnStatusReceiver() {
@@ -507,7 +539,6 @@ class MainActivity : Activity() {
             return
         }
 
-        // Request notification permission before starting protection.
         if (
             Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(

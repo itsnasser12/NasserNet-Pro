@@ -2,7 +2,10 @@
 package com.nassernet.pro
 
 import android.app.Activity
+import android.net.VpnService
 import android.os.Bundle
+import android.os.Build
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -18,8 +21,13 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 
 class MainActivity : Activity() {
+
+    companion object {
+        private const val VPN_REQUEST_CODE = 501
+    }
 
     private val backgroundColor = Color.rgb(12, 25, 43)
     private val cardColor = Color.rgb(22, 40, 62)
@@ -30,11 +38,16 @@ class MainActivity : Activity() {
     private lateinit var repository: InstalledAppsRepository
     private lateinit var appList: LinearLayout
     private lateinit var statusText: TextView
+    private lateinit var protectionStatusText: TextView
     private lateinit var userAppsButton: Button
     private lateinit var systemAppsButton: Button
     private lateinit var searchInput: EditText
+    private lateinit var startButton: Button
+    private lateinit var stopButton: Button
 
     private var showingSystemApps = false
+    private var protectionRequestPending = false
+
     private val selectedGames = mutableSetOf<String>()
 
     private fun dp(value: Int): Int {
@@ -51,7 +64,10 @@ class MainActivity : Activity() {
             text = value
             textSize = size
             setTextColor(color)
-            if (bold) setTypeface(null, Typeface.BOLD)
+
+            if (bold) {
+                setTypeface(null, Typeface.BOLD)
+            }
         }
     }
 
@@ -65,16 +81,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateTabButtons() {
-        userAppsButton.setBackgroundColor(
-            if (!showingSystemApps) accentColor else cardColor
-        )
-
-        systemAppsButton.setBackgroundColor(
-            if (showingSystemApps) accentColor else cardColor
-        )
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -82,7 +88,10 @@ class MainActivity : Activity() {
         window.navigationBarColor = backgroundColor
 
         repository = InstalledAppsRepository(this)
-        selectedGames.addAll(AppPrefs.getSelectedGames(this))
+
+        selectedGames.addAll(
+            AppPrefs.getSelectedGames(this)
+        )
 
         buildScreen()
         showApps()
@@ -92,7 +101,12 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(12))
+            setPadding(
+                dp(20),
+                dp(20),
+                dp(20),
+                dp(12)
+            )
             setBackgroundColor(backgroundColor)
         }
 
@@ -117,13 +131,26 @@ class MainActivity : Activity() {
             true
         )
 
+        protectionStatusText = makeText(
+            "PROTECTION: OFF",
+            14f,
+            Color.rgb(255, 190, 60),
+            true
+        )
+
         root.addView(title)
         root.addView(subtitle)
 
         val statusContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(
+                dp(14),
+                dp(12),
+                dp(14),
+                dp(12)
+            )
+
             background = GradientDrawable().apply {
                 setColor(cardColor)
                 cornerRadius = dp(12).toFloat()
@@ -132,16 +159,85 @@ class MainActivity : Activity() {
 
         statusContainer.addView(statusText)
 
+        statusContainer.addView(
+            protectionStatusText,
+            LinearLayout.LayoutParams(
+                -1,
+                -2
+            ).apply {
+                topMargin = dp(8)
+            }
+        )
+
         root.addView(
             statusContainer,
-            LinearLayout.LayoutParams(-1, dp(58)).apply {
+            LinearLayout.LayoutParams(
+                -1,
+                dp(78)
+            ).apply {
                 topMargin = dp(20)
+                bottomMargin = dp(14)
+            }
+        )
+
+        val protectionButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        startButton = makeButton("START PROTECTION").apply {
+            setBackgroundColor(Color.rgb(30, 150, 90))
+            setOnClickListener {
+                requestVpnPermission()
+            }
+        }
+
+        stopButton = makeButton("STOP PROTECTION").apply {
+            setBackgroundColor(Color.rgb(190, 65, 65))
+            setOnClickListener {
+                stopProtection()
+            }
+        }
+
+        protectionButtons.addView(
+            startButton,
+            LinearLayout.LayoutParams(
+                0,
+                dp(52),
+                1f
+            ).apply {
+                marginEnd = dp(5)
+            }
+        )
+
+        protectionButtons.addView(
+            stopButton,
+            LinearLayout.LayoutParams(
+                0,
+                dp(52),
+                1f
+            ).apply {
+                marginStart = dp(5)
+            }
+        )
+
+        root.addView(
+            protectionButtons,
+            LinearLayout.LayoutParams(
+                -1,
+                dp(52)
+            ).apply {
                 bottomMargin = dp(18)
             }
         )
 
         root.addView(
-            makeText("APPLICATIONS", 16f, textColor, true)
+            makeText(
+                "APPLICATIONS",
+                16f,
+                textColor,
+                true
+            )
         )
 
         val tabs = LinearLayout(this).apply {
@@ -154,21 +250,32 @@ class MainActivity : Activity() {
 
         tabs.addView(
             userAppsButton,
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+            ).apply {
                 marginEnd = dp(6)
             }
         )
 
         tabs.addView(
             systemAppsButton,
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+            ).apply {
                 marginStart = dp(6)
             }
         )
 
         root.addView(
             tabs,
-            LinearLayout.LayoutParams(-1, dp(48)).apply {
+            LinearLayout.LayoutParams(
+                -1,
+                dp(48)
+            ).apply {
                 topMargin = dp(14)
                 bottomMargin = dp(12)
             }
@@ -192,9 +299,19 @@ class MainActivity : Activity() {
             setTextColor(textColor)
             textSize = 15f
             setSingleLine(true)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
+
+            inputType =
+                android.text.InputType.TYPE_CLASS_TEXT
+
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+
+            setPadding(
+                dp(14),
+                dp(8),
+                dp(14),
+                dp(8)
+            )
+
             background = GradientDrawable().apply {
                 setColor(cardColor)
                 cornerRadius = dp(10).toFloat()
@@ -204,31 +321,38 @@ class MainActivity : Activity() {
 
         root.addView(
             searchInput,
-            LinearLayout.LayoutParams(-1, dp(50)).apply {
+            LinearLayout.LayoutParams(
+                -1,
+                dp(50)
+            ).apply {
                 bottomMargin = dp(12)
             }
         )
 
-        searchInput.addTextChangedListener(object : TextWatcher {
+        searchInput.addTextChangedListener(
+            object : TextWatcher {
 
-            override fun beforeTextChanged(
-                s: CharSequence?,
-                start: Int,
-                count: Int,
-                after: Int
-            ) {}
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int
+                ) {}
 
-            override fun onTextChanged(
-                s: CharSequence?,
-                start: Int,
-                before: Int,
-                count: Int
-            ) {
-                showApps()
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int
+                ) {
+                    showApps()
+                }
+
+                override fun afterTextChanged(
+                    s: Editable?
+                ) {}
             }
-
-            override fun afterTextChanged(s: Editable?) {}
-        })
+        )
 
         val scrollView = ScrollView(this)
 
@@ -240,11 +364,166 @@ class MainActivity : Activity() {
 
         root.addView(
             scrollView,
-            LinearLayout.LayoutParams(-1, 0, 1f)
+            LinearLayout.LayoutParams(
+                -1,
+                0,
+                1f
+            )
         )
 
         updateTabButtons()
         setContentView(root)
+    }
+
+    private fun requestVpnPermission() {
+
+        if (selectedGames.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Select at least one game first",
+                Toast.LENGTH_LONG
+            ).show()
+
+            return
+        }
+
+        if (protectionRequestPending) {
+            return
+        }
+
+        val permissionIntent = VpnService.prepare(this)
+
+        if (permissionIntent != null) {
+
+            protectionRequestPending = true
+
+            startActivityForResult(
+                permissionIntent,
+                VPN_REQUEST_CODE
+            )
+
+        } else {
+
+            startVpnService()
+        }
+    }
+
+    @Deprecated("Using Activity result API for VPN consent")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(
+            requestCode,
+            resultCode,
+            data
+        )
+
+        if (requestCode == VPN_REQUEST_CODE) {
+
+            protectionRequestPending = false
+
+            if (resultCode == RESULT_OK) {
+                startVpnService()
+            } else {
+                Toast.makeText(
+                    this,
+                    "VPN permission was not granted",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun startVpnService() {
+
+        val intent = Intent(
+            this,
+            GameFirewallVpnService::class.java
+        ).apply {
+            action = GameFirewallVpnService.ACTION_START
+        }
+
+        try {
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+
+            protectionStatusText.text =
+                "PROTECTION: START REQUESTED"
+
+            protectionStatusText.setTextColor(
+                accentColor
+            )
+
+        } catch (exception: Exception) {
+
+            Toast.makeText(
+                this,
+                "Unable to start VPN service: ${exception.message}",
+                Toast.LENGTH_LONG
+            ).show()
+
+            protectionStatusText.text =
+                "PROTECTION: START FAILED"
+
+            protectionStatusText.setTextColor(
+                Color.RED
+            )
+        }
+    }
+
+    private fun stopProtection() {
+
+        val intent = Intent(
+            this,
+            GameFirewallVpnService::class.java
+        ).apply {
+            action = GameFirewallVpnService.ACTION_STOP
+        }
+
+        try {
+
+            startService(intent)
+
+            protectionStatusText.text =
+                "PROTECTION: STOP REQUESTED"
+
+            protectionStatusText.setTextColor(
+                Color.rgb(255, 190, 60)
+            )
+
+        } catch (exception: Exception) {
+
+            Toast.makeText(
+                this,
+                "Unable to stop VPN service: ${exception.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun updateTabButtons() {
+
+        userAppsButton.setBackgroundColor(
+            if (!showingSystemApps) {
+                accentColor
+            } else {
+                cardColor
+            }
+        )
+
+        systemAppsButton.setBackgroundColor(
+            if (showingSystemApps) {
+                accentColor
+            } else {
+                cardColor
+            }
+        )
     }
 
     private fun showApps() {
@@ -260,11 +539,17 @@ class MainActivity : Activity() {
         val query = searchInput.text.toString().trim()
 
         val apps = allApps.filter { app ->
-            app.appName.contains(query, ignoreCase = true) ||
-            app.packageName.contains(query, ignoreCase = true)
+            app.appName.contains(
+                query,
+                ignoreCase = true
+            ) || app.packageName.contains(
+                query,
+                ignoreCase = true
+            )
         }
 
         if (apps.isEmpty()) {
+
             val emptyText = makeText(
                 "No applications found",
                 15f,
@@ -275,7 +560,10 @@ class MainActivity : Activity() {
 
             appList.addView(
                 emptyText,
-                LinearLayout.LayoutParams(-1, dp(100))
+                LinearLayout.LayoutParams(
+                    -1,
+                    dp(100)
+                )
             )
 
             updateStatus()
@@ -294,7 +582,14 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+
+            setPadding(
+                dp(12),
+                dp(8),
+                dp(12),
+                dp(8)
+            )
+
             background = GradientDrawable().apply {
                 setColor(cardColor)
                 cornerRadius = dp(10).toFloat()
@@ -308,17 +603,25 @@ class MainActivity : Activity() {
 
         row.addView(
             icon,
-            LinearLayout.LayoutParams(dp(42), dp(42))
+            LinearLayout.LayoutParams(
+                dp(42),
+                dp(42)
+            )
         )
 
         val checkBox = CheckBox(this).apply {
             text = app.appName
             textSize = 14f
             setTextColor(textColor)
-            isChecked = selectedGames.contains(app.packageName)
-            buttonTintList = ColorStateList.valueOf(accentColor)
 
-            setOnCheckedChangeListener { _, isChecked ->
+            isChecked =
+                selectedGames.contains(app.packageName)
+
+            buttonTintList =
+                ColorStateList.valueOf(accentColor)
+
+            setOnCheckedChangeListener {
+                    _, isChecked ->
 
                 if (isChecked) {
                     selectedGames.add(app.packageName)
@@ -337,20 +640,28 @@ class MainActivity : Activity() {
 
         row.addView(
             checkBox,
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+            LinearLayout.LayoutParams(
+                0,
+                dp(52),
+                1f
+            ).apply {
                 marginStart = dp(10)
             }
         )
 
         appList.addView(
             row,
-            LinearLayout.LayoutParams(-1, dp(66)).apply {
+            LinearLayout.LayoutParams(
+                -1,
+                dp(66)
+            ).apply {
                 bottomMargin = dp(7)
             }
         )
     }
 
     private fun updateStatus() {
-        statusText.text = "Selected games: ${selectedGames.size}"
+        statusText.text =
+            "Selected games: ${selectedGames.size}"
     }
 }

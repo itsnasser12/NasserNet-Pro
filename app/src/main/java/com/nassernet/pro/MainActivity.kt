@@ -6,10 +6,14 @@ import android.os.Bundle
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
-import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -28,6 +32,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var userAppsButton: Button
     private lateinit var systemAppsButton: Button
+    private lateinit var searchInput: EditText
 
     private var showingSystemApps = false
     private val selectedGames = mutableSetOf<String>()
@@ -126,25 +131,18 @@ class MainActivity : Activity() {
         }
 
         statusContainer.addView(statusText)
+
         root.addView(
             statusContainer,
-            LinearLayout.LayoutParams(
-                -1,
-                dp(58)
-            ).apply {
+            LinearLayout.LayoutParams(-1, dp(58)).apply {
                 topMargin = dp(20)
                 bottomMargin = dp(18)
             }
         )
 
-        val sectionTitle = makeText(
-            "APPLICATIONS",
-            16f,
-            textColor,
-            true
+        root.addView(
+            makeText("APPLICATIONS", 16f, textColor, true)
         )
-
-        root.addView(sectionTitle)
 
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -188,6 +186,49 @@ class MainActivity : Activity() {
             showApps()
         }
 
+        searchInput = EditText(this).apply {
+            hint = "Search apps..."
+            setHintTextColor(secondaryColor)
+            setTextColor(textColor)
+            textSize = 15f
+            singleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), accentColor)
+            }
+        }
+
+        root.addView(
+            searchInput,
+            LinearLayout.LayoutParams(-1, dp(50)).apply {
+                bottomMargin = dp(12)
+            }
+        )
+
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(
+                s: CharSequence?,
+                start: Int,
+                count: Int,
+                after: Int
+            ) {}
+
+            override fun onTextChanged(
+                s: CharSequence?,
+                start: Int,
+                before: Int,
+                count: Int
+            ) {
+                showApps()
+            }
+
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
         val scrollView = ScrollView(this)
 
         appList = LinearLayout(this).apply {
@@ -198,7 +239,7 @@ class MainActivity : Activity() {
 
         root.addView(
             scrollView,
-            LinearLayout.LayoutParams( -1, 0, 1f)
+            LinearLayout.LayoutParams(-1, 0, 1f)
         )
 
         updateTabButtons()
@@ -209,10 +250,17 @@ class MainActivity : Activity() {
 
         appList.removeAllViews()
 
-        val apps = if (showingSystemApps) {
+        val allApps = if (showingSystemApps) {
             repository.getSystemApps()
         } else {
             repository.getUserApps()
+        }
+
+        val query = searchInput.text.toString().trim()
+
+        val apps = allApps.filter { app ->
+            app.appName.contains(query, ignoreCase = true) ||
+            app.packageName.contains(query, ignoreCase = true)
         }
 
         if (apps.isEmpty()) {
@@ -267,9 +315,7 @@ class MainActivity : Activity() {
             textSize = 14f
             setTextColor(textColor)
             isChecked = selectedGames.contains(app.packageName)
-            buttonTintList = android.content.res.ColorStateList.valueOf(
-                accentColor
-            )
+            buttonTintList = ColorStateList.valueOf(accentColor)
 
             setOnCheckedChangeListener { _, isChecked ->
 
@@ -290,11 +336,7 @@ class MainActivity : Activity() {
 
         row.addView(
             checkBox,
-            LinearLayout.LayoutParams(
-                0,
-                dp(52),
-                1f
-            ).apply {
+            LinearLayout.LayoutParams(0, dp(52), 1f).apply {
                 marginStart = dp(10)
             }
         )

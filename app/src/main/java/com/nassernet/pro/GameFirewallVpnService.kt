@@ -41,6 +41,9 @@ class GameFirewallVpnService : VpnService() {
 
     private var packetEngine: VpnPacketEngine? = null
 
+    @Volatile
+    private var currentStatus = STATUS_STOPPED
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -61,19 +64,47 @@ class GameFirewallVpnService : VpnService() {
                 stopSelf()
             }
 
+            ACTION_STATUS -> {
+                Log.i(TAG, "Status requested")
+
+                val message = when (currentStatus) {
+                    STATUS_ACTIVE -> "VPN protection is active"
+                    STATUS_STARTING -> "VPN protection is starting"
+                    STATUS_FAILED -> "VPN protection failed"
+                    else -> "VPN protection is stopped"
+                }
+
+                publishStatus(currentStatus, message)
+
+                // If this was only a status query and the VPN
+                // is stopped, do not leave an idle service running.
+                if (
+                    currentStatus == STATUS_STOPPED ||
+                    currentStatus == STATUS_FAILED
+                ) {
+                    stopSelf(startId)
+                }
+            }
+
             else -> {
                 Log.w(TAG, "Unknown VPN action")
 
                 publishStatus(
-                    STATUS_FAILED,
-                    "Unknown VPN action"
+                    currentStatus,
+                    "Current VPN status"
                 )
-
-                stopSelf()
             }
         }
 
         return START_NOT_STICKY
+    }
+
+    private fun setCurrentStatus(
+        status: String,
+        message: String
+    ) {
+        currentStatus = status
+        publishStatus(status, message)
     }
 
     private fun startProtection(startId: Int) {
@@ -81,7 +112,7 @@ class GameFirewallVpnService : VpnService() {
         if (packetEngine?.isRunning == true) {
             Log.i(TAG, "VPN is already running")
 
-            publishStatus(
+            setCurrentStatus(
                 STATUS_ACTIVE,
                 "VPN protection is active"
             )
@@ -95,7 +126,7 @@ class GameFirewallVpnService : VpnService() {
 
         var engine: VpnPacketEngine? = null
 
-        publishStatus(
+        setCurrentStatus(
             STATUS_STARTING,
             "Starting VPN protection"
         )
@@ -125,7 +156,7 @@ class GameFirewallVpnService : VpnService() {
                 "VPN tunnel established successfully"
             )
 
-            publishStatus(
+            setCurrentStatus(
                 STATUS_ACTIVE,
                 "VPN protection is active"
             )
@@ -151,7 +182,7 @@ class GameFirewallVpnService : VpnService() {
             packetEngine = null
             removeForegroundNotification()
 
-            publishStatus(
+            setCurrentStatus(
                 STATUS_FAILED,
                 exception.localizedMessage
                     ?: "VPN startup failed"
@@ -299,7 +330,7 @@ class GameFirewallVpnService : VpnService() {
 
         cleanupProtection()
 
-        publishStatus(
+        setCurrentStatus(
             STATUS_STOPPED,
             "VPN protection stopped"
         )
@@ -349,6 +380,13 @@ class GameFirewallVpnService : VpnService() {
     override fun onDestroy() {
 
         cleanupProtection()
+
+        if (currentStatus != STATUS_STOPPED) {
+            setCurrentStatus(
+                STATUS_STOPPED,
+                "VPN service stopped"
+            )
+        }
 
         super.onDestroy()
     }

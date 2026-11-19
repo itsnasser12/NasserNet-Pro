@@ -15,6 +15,9 @@ import android.content.res.ColorStateList
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.net.Uri
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -36,7 +39,6 @@ class MainActivity : Activity() {
         private const val NOTIFICATION_REQUEST_CODE = 502
     }
 
-    // Premium dark theme
     private val backgroundColor = Color.rgb(9, 18, 32)
     private val cardColor = Color.rgb(20, 37, 57)
     private val cardLightColor = Color.rgb(27, 47, 70)
@@ -61,11 +63,16 @@ class MainActivity : Activity() {
     private lateinit var selectedCountText: TextView
     private lateinit var sectionCountText: TextView
 
+    // Battery optimization UI
+    private lateinit var batteryStatusText: TextView
+    private lateinit var batteryDescriptionText: TextView
+    private lateinit var batteryActionButton: Button
+
     private var showingSystemApps = false
     private var protectionRequestPending = false
     private var receiverRegistered = false
 
-    // Both sections start collapsed whenever the activity is created.
+    // Both sections start collapsed.
     private var selectedSectionExpanded = false
     private var otherSectionExpanded = false
 
@@ -182,10 +189,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
 
-            background = makeCard(
-                backgroundColor,
-                13
-            )
+            background = makeCard(backgroundColor, 13)
 
             setPadding(
                 dp(8),
@@ -248,6 +252,7 @@ class MainActivity : Activity() {
         buildScreen()
         showApps()
         updateProtectionUi()
+        updateBatteryOptimizationUi()
     }
 
     override fun onStart() {
@@ -255,6 +260,15 @@ class MainActivity : Activity() {
 
         registerVpnStatusReceiver()
         requestCurrentVpnStatus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Refresh battery status after returning from Android settings.
+        if (::batteryStatusText.isInitialized) {
+            updateBatteryOptimizationUi()
+        }
     }
 
     override fun onStop() {
@@ -268,9 +282,7 @@ class MainActivity : Activity() {
 
     private fun registerVpnStatusReceiver() {
 
-        if (receiverRegistered) {
-            return
-        }
+        if (receiverRegistered) return
 
         val filter = IntentFilter(
             GameFirewallVpnService.ACTION_STATUS
@@ -324,9 +336,7 @@ class MainActivity : Activity() {
 
     private fun unregisterVpnStatusReceiver() {
 
-        if (!receiverRegistered) {
-            return
-        }
+        if (!receiverRegistered) return
 
         try {
             unregisterReceiver(vpnStatusReceiver)
@@ -369,6 +379,7 @@ class MainActivity : Activity() {
         buildHeader(content)
         buildProtectionCard(content)
         buildProtectionButtons(content)
+        buildBatteryOptimizationCard(content)
         buildApplicationsSection(content)
 
         scrollView.addView(content)
@@ -402,24 +413,22 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        val title = makeText(
-            "NasserNet Pro",
-            27f,
-            textColor,
-            true
+        titleContainer.addView(
+            makeText(
+                "NasserNet Pro",
+                27f,
+                textColor,
+                true
+            )
         )
-
-        val subtitle = makeText(
-            "GAMING NETWORK FIREWALL",
-            11f,
-            accentColor,
-            true
-        )
-
-        titleContainer.addView(title)
 
         titleContainer.addView(
-            subtitle,
+            makeText(
+                "GAMING NETWORK FIREWALL",
+                11f,
+                accentColor,
+                true
+            ),
             LinearLayout.LayoutParams(
                 -2,
                 -2
@@ -442,7 +451,6 @@ class MainActivity : Activity() {
             textSize = 27f
             gravity = Gravity.CENTER
             setTextColor(accentColor)
-
             background = makeOutline(
                 cardLightColor,
                 accentDarkColor,
@@ -459,7 +467,6 @@ class MainActivity : Activity() {
         )
 
         parent.addView(header)
-
         addVerticalSpace(parent, 22)
     }
 
@@ -489,15 +496,13 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val title = makeText(
-            "PROTECTION STATUS",
-            12f,
-            secondaryColor,
-            true
-        )
-
         topRow.addView(
-            title,
+            makeText(
+                "PROTECTION STATUS",
+                12f,
+                secondaryColor,
+                true
+            ),
             LinearLayout.LayoutParams(
                 0,
                 -2,
@@ -541,17 +546,15 @@ class MainActivity : Activity() {
             true
         )
 
-        val countLabel = makeText(
-            "Apps Selected",
-            14f,
-            secondaryColor,
-            true
-        )
-
         countRow.addView(selectedCountText)
 
         countRow.addView(
-            countLabel,
+            makeText(
+                "Apps Selected",
+                14f,
+                secondaryColor,
+                true
+            ),
             LinearLayout.LayoutParams(
                 -2,
                 -2
@@ -604,7 +607,6 @@ class MainActivity : Activity() {
         )
 
         parent.addView(card)
-
         addVerticalSpace(parent, 13)
     }
 
@@ -663,8 +665,231 @@ class MainActivity : Activity() {
         )
 
         parent.addView(buttons)
+        addVerticalSpace(parent, 16)
+    }
 
-        addVerticalSpace(parent, 24)
+    // --------------------------------------------------
+    // Battery optimization card
+    // --------------------------------------------------
+
+    private fun buildBatteryOptimizationCard(
+        parent: LinearLayout
+    ) {
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+
+            setPadding(
+                dp(15),
+                dp(13),
+                dp(15),
+                dp(13)
+            )
+
+            background = makeCard(cardColor, 15)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        header.addView(
+            makeText(
+                "BATTERY OPTIMIZATION",
+                12f,
+                secondaryColor,
+                true
+            ),
+            LinearLayout.LayoutParams(
+                0,
+                -2,
+                1f
+            )
+        )
+
+        batteryStatusText = makeText(
+            "CHECKING",
+            10f,
+            warningColor,
+            true
+        ).apply {
+            gravity = Gravity.CENTER
+
+            setPadding(
+                dp(9),
+                dp(5),
+                dp(9),
+                dp(5)
+            )
+
+            background = makeCard(
+                Color.rgb(65, 52, 30),
+                20
+            )
+        }
+
+        header.addView(batteryStatusText)
+        card.addView(header)
+
+        batteryDescriptionText = makeText(
+            "Check whether Android battery optimization may restrict background activity.",
+            11f,
+            secondaryColor
+        )
+
+        card.addView(
+            batteryDescriptionText,
+            LinearLayout.LayoutParams(
+                -1,
+                -2
+            ).apply {
+                topMargin = dp(8)
+            }
+        )
+
+        batteryActionButton = makeButton(
+            "CHECK BATTERY SETTINGS",
+            accentDarkColor
+        ).apply {
+            setOnClickListener {
+                requestBatteryOptimizationExemption()
+            }
+        }
+
+        card.addView(
+            batteryActionButton,
+            LinearLayout.LayoutParams(
+                -1,
+                dp(44)
+            ).apply {
+                topMargin = dp(12)
+            }
+        )
+
+        parent.addView(card)
+        addVerticalSpace(parent, 22)
+    }
+
+    private fun isBatteryOptimizationIgnored(): Boolean {
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true
+        }
+
+        val powerManager =
+            getSystemService(Context.POWER_SERVICE) as PowerManager
+
+        return powerManager.isIgnoringBatteryOptimizations(
+            packageName
+        )
+    }
+
+    private fun updateBatteryOptimizationUi() {
+
+        if (!::batteryStatusText.isInitialized) return
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+
+            batteryStatusText.text = "NOT REQUIRED"
+            batteryStatusText.setTextColor(greenColor)
+
+            batteryDescriptionText.text =
+                "Battery optimization exemption is not required on this Android version."
+
+            batteryActionButton.text = "NOT REQUIRED"
+            batteryActionButton.isEnabled = false
+            batteryActionButton.alpha = 0.55f
+
+            return
+        }
+
+        val isIgnored = try {
+            isBatteryOptimizationIgnored()
+        } catch (exception: Exception) {
+            false
+        }
+
+        if (isIgnored) {
+
+            batteryStatusText.text = "PROTECTED"
+            batteryStatusText.setTextColor(greenColor)
+
+            batteryStatusText.background = makeCard(
+                Color.rgb(20, 66, 52),
+                20
+            )
+
+            batteryDescriptionText.text =
+                "NasserNet Pro is excluded from standard battery optimization."
+
+            batteryActionButton.text = "BATTERY EXEMPTION ENABLED"
+            batteryActionButton.isEnabled = false
+            batteryActionButton.alpha = 0.65f
+
+        } else {
+
+            batteryStatusText.text = "OPTIMIZATION ACTIVE"
+            batteryStatusText.setTextColor(warningColor)
+
+            batteryStatusText.background = makeCard(
+                Color.rgb(65, 52, 30),
+                20
+            )
+
+            batteryDescriptionText.text =
+                "Android may restrict background activity. You can request a battery optimization exemption."
+
+            batteryActionButton.text =
+                "DISABLE BATTERY OPTIMIZATION"
+
+            batteryActionButton.isEnabled = true
+            batteryActionButton.alpha = 1f
+        }
+    }
+
+    private fun requestBatteryOptimizationExemption() {
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            updateBatteryOptimizationUi()
+            return
+        }
+
+        if (isBatteryOptimizationIgnored()) {
+            updateBatteryOptimizationUi()
+            return
+        }
+
+        try {
+
+            val intent = Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+            ).apply {
+                data = Uri.parse("package:$packageName")
+            }
+
+            startActivity(intent)
+
+        } catch (exception: Exception) {
+
+            // Fallback: open the general battery optimization list.
+            try {
+
+                val fallbackIntent = Intent(
+                    Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+                )
+
+                startActivity(fallbackIntent)
+
+            } catch (fallbackException: Exception) {
+
+                Toast.makeText(
+                    this,
+                    "Unable to open battery settings: ${fallbackException.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     // --------------------------------------------------
@@ -840,7 +1065,7 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
-    // Collapsible application group header
+    // Collapsible group header
     // --------------------------------------------------
 
     private fun createGroupHeader(
@@ -898,15 +1123,13 @@ class MainActivity : Activity() {
             )
         )
 
-        val titleText = makeText(
-            title,
-            12f,
-            if (selectedGroup) accentColor else textColor,
-            true
-        )
-
         header.addView(
-            titleText,
+            makeText(
+                title,
+                12f,
+                if (selectedGroup) accentColor else textColor,
+                true
+            ),
             LinearLayout.LayoutParams(
                 0,
                 -2,
@@ -939,17 +1162,15 @@ class MainActivity : Activity() {
 
         header.addView(countText)
 
-        val arrow = makeText(
-            if (expanded) "⌃" else "⌄",
-            20f,
-            secondaryColor,
-            true
-        ).apply {
-            gravity = Gravity.CENTER
-        }
-
         header.addView(
-            arrow,
+            makeText(
+                if (expanded) "⌃" else "⌄",
+                20f,
+                secondaryColor,
+                true
+            ).apply {
+                gravity = Gravity.CENTER
+            },
             LinearLayout.LayoutParams(
                 dp(30),
                 dp(30)
@@ -1180,7 +1401,7 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
-    // Update protection card and controls
+    // Update protection UI
     // --------------------------------------------------
 
     private fun updateProtectionUi() {
@@ -1334,7 +1555,7 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
-    // Application list with two collapsible sections
+    // Application list
     // --------------------------------------------------
 
     private fun showApps() {
@@ -1419,7 +1640,6 @@ class MainActivity : Activity() {
             return
         }
 
-        // Selected applications section
         if (selectedApps.isNotEmpty()) {
 
             val selectedHeader = createGroupHeader(
@@ -1428,6 +1648,7 @@ class MainActivity : Activity() {
                 expanded = selectedSectionExpanded,
                 selectedGroup = true
             ) {
+
                 selectedSectionExpanded =
                     !selectedSectionExpanded
 
@@ -1454,7 +1675,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // Other applications section
         if (otherApps.isNotEmpty()) {
 
             val otherHeader = createGroupHeader(
@@ -1463,6 +1683,7 @@ class MainActivity : Activity() {
                 expanded = otherSectionExpanded,
                 selectedGroup = false
             ) {
+
                 otherSectionExpanded =
                     !otherSectionExpanded
 
@@ -1602,7 +1823,6 @@ class MainActivity : Activity() {
                     selectedGames
                 )
 
-                // Move the app to its new section.
                 showApps()
             }
         }
@@ -1649,7 +1869,7 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
-    // Selected applications counters
+    // Selected counters
     // --------------------------------------------------
 
     private fun updateSelectedCounters() {

@@ -14,6 +14,8 @@ import android.graphics.drawable.GradientDrawable
 import android.content.res.ColorStateList
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -51,6 +53,14 @@ class MainActivity : Activity() {
     private val warningColor = Color.rgb(255, 190, 65)
 
     private lateinit var repository: InstalledAppsRepository
+
+    // Reuse application rows instead of recreating icons and controls.
+    private val appRowCache = mutableMapOf<String, LinearLayout>()
+    private val appCheckBoxCache = mutableMapOf<String, CheckBox>()
+
+    private val searchHandler = Handler(Looper.getMainLooper())
+    private var pendingSearch: Runnable? = null
+    private val searchDebounceMs = 200L
 
     private lateinit var appList: LinearLayout
     private lateinit var protectionStatusText: TextView
@@ -274,6 +284,12 @@ class MainActivity : Activity() {
     override fun onStop() {
         unregisterVpnStatusReceiver()
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        pendingSearch?.let(searchHandler::removeCallbacks)
+        pendingSearch = null
+        super.onDestroy()
     }
 
     // --------------------------------------------------
@@ -1044,12 +1060,17 @@ class MainActivity : Activity() {
                     before: Int,
                     count: Int
                 ) {
-                    showApps()
+                    pendingSearch?.let(searchHandler::removeCallbacks)
+
+                    val task = Runnable {
+                        showApps()
+                    }
+
+                    pendingSearch = task
+                    searchHandler.postDelayed(task, searchDebounceMs)
                 }
 
-                override fun afterTextChanged(
-                    s: Editable?
-                ) {}
+                override fun afterTextChanged(s: Editable?) {}
             }
         )
 
@@ -1509,8 +1530,19 @@ class MainActivity : Activity() {
             13
         )
 
-        showApps()
+        updateCachedRowsEnabled()
         updateSelectedCounters()
+    }
+
+    private fun updateCachedRowsEnabled() {
+        val enabled =
+            protectionState != GameFirewallVpnService.STATUS_ACTIVE &&
+            protectionState != GameFirewallVpnService.STATUS_STARTING &&
+            !protectionRequestPending
+
+        appCheckBoxCache.values.forEach { checkBox ->
+            checkBox.isEnabled = enabled
+        }
     }
 
     // --------------------------------------------------
@@ -1560,6 +1592,8 @@ class MainActivity : Activity() {
 
     private fun showApps() {
 
+        // Detach existing views but keep their instances in the cache.
+        // Cached rows are reattached below, avoiding repeated icon/control creation.
         appList.removeAllViews()
 
         val allApps = if (showingSystemApps) {
@@ -1570,15 +1604,13 @@ class MainActivity : Activity() {
 
         val query = searchInput.text.toString().trim()
 
-        val filteredApps = allApps.filter { app ->
-
-            app.appName.contains(
-                query,
-                ignoreCase = true
-            ) || app.packageName.contains(
-                query,
-                ignoreCase = true
-            )
+        val filteredApps = if (query.isEmpty()) {
+            allApps
+        } else {
+            allApps.filter { app ->
+                app.appName.contains(query, ignoreCase = true) ||
+                    app.packageName.contains(query, ignoreCase = true)
+            }
         }
 
         val selectedApps = filteredApps.filter {
@@ -1648,10 +1680,7 @@ class MainActivity : Activity() {
                 expanded = selectedSectionExpanded,
                 selectedGroup = true
             ) {
-
-                selectedSectionExpanded =
-                    !selectedSectionExpanded
-
+                selectedSectionExpanded = !selectedSectionExpanded
                 showApps()
             }
 
@@ -1666,9 +1695,20 @@ class MainActivity : Activity() {
             )
 
             if (selectedSectionExpanded) {
+                selectedApps.forEach { app ->
+                    val row = appRowCache.getOrPut(app.packageName) {
+                        createAppRow(app)
+                    }
 
-                for (app in selectedApps) {
-                    addAppRow(app)
+                    appList.addView(
+                        row,
+                        LinearLayout.LayoutParams(
+                            -1,
+                            dp(65)
+                        ).apply {
+                            bottomMargin = dp(7)
+                        }
+                    )
                 }
 
                 addVerticalSpace(appList, 12)
@@ -1683,10 +1723,7 @@ class MainActivity : Activity() {
                 expanded = otherSectionExpanded,
                 selectedGroup = false
             ) {
-
-                otherSectionExpanded =
-                    !otherSectionExpanded
-
+                otherSectionExpanded = !otherSectionExpanded
                 showApps()
             }
 
@@ -1701,9 +1738,20 @@ class MainActivity : Activity() {
             )
 
             if (otherSectionExpanded) {
+                otherApps.forEach { app ->
+                    val row = appRowCache.getOrPut(app.packageName) {
+                        createAppRow(app)
+                    }
 
-                for (app in otherApps) {
-                    addAppRow(app)
+                    appList.addView(
+                        row,
+                        LinearLayout.LayoutParams(
+                            -1,
+                            dp(65)
+                        ).apply {
+                            bottomMargin = dp(7)
+                        }
+                    )
                 }
             }
         }
@@ -1711,14 +1759,10 @@ class MainActivity : Activity() {
         updateSelectedCounters()
     }
 
-    // --------------------------------------------------
-    // Application row
-    // --------------------------------------------------
+    // Creates a row once. showApps() reuses the cached instance afterwards.
+    private fun createAppRow(app: AppInfo): LinearLayout {
 
-    private fun addAppRow(app: AppInfo) {
-
-        val isSelected =
-            selectedGames.contains(app.packageName)
+        val isSelected = selectedGames.contains(app.packageName)
 
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1787,10 +1831,8 @@ class MainActivity : Activity() {
             )
 
             isEnabled =
-                protectionState !=
-                    GameFirewallVpnService.STATUS_ACTIVE &&
-                protectionState !=
-                    GameFirewallVpnService.STATUS_STARTING &&
+                protectionState != GameFirewallVpnService.STATUS_ACTIVE &&
+                protectionState != GameFirewallVpnService.STATUS_STARTING &&
                 !protectionRequestPending
 
             setPadding(
@@ -1803,10 +1845,8 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, checked ->
 
                 if (
-                    protectionState ==
-                        GameFirewallVpnService.STATUS_ACTIVE ||
-                    protectionState ==
-                        GameFirewallVpnService.STATUS_STARTING ||
+                    protectionState == GameFirewallVpnService.STATUS_ACTIVE ||
+                    protectionState == GameFirewallVpnService.STATUS_STARTING ||
                     protectionRequestPending
                 ) {
                     return@setOnCheckedChangeListener
@@ -1823,9 +1863,15 @@ class MainActivity : Activity() {
                     selectedGames
                 )
 
+                // Recreate only the row whose selected styling/group changed.
+                appRowCache.remove(app.packageName)
+                appCheckBoxCache.remove(app.packageName)
+
                 showApps()
             }
         }
+
+        appCheckBoxCache[app.packageName] = checkBox
 
         row.addView(
             checkBox,
@@ -1857,15 +1903,7 @@ class MainActivity : Activity() {
             )
         }
 
-        appList.addView(
-            row,
-            LinearLayout.LayoutParams(
-                -1,
-                dp(65)
-            ).apply {
-                bottomMargin = dp(7)
-            }
-        )
+        return row
     }
 
     // --------------------------------------------------

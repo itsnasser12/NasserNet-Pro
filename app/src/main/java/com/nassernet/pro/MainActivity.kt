@@ -55,7 +55,10 @@ class MainActivity : Activity() {
     private lateinit var repository: InstalledAppsRepository
 
     // Reuse application rows instead of recreating icons and controls.
-    private val appRowCache = mutableMapOf<String, LinearLayout>()
+    // Keep only the most recently used rows to limit retained view/icon memory.
+    private val maxCachedAppRows = 40
+    private val appRowCache =
+        LinkedHashMap<String, LinearLayout>(48, 0.75f, true)
     private val appCheckBoxCache = mutableMapOf<String, CheckBox>()
 
     private val searchHandler = Handler(Looper.getMainLooper())
@@ -1696,9 +1699,7 @@ class MainActivity : Activity() {
 
             if (selectedSectionExpanded) {
                 selectedApps.forEach { app ->
-                    val row = appRowCache.getOrPut(app.packageName) {
-                        createAppRow(app)
-                    }
+                    val row = getCachedAppRow(app)
 
                     appList.addView(
                         row,
@@ -1739,9 +1740,7 @@ class MainActivity : Activity() {
 
             if (otherSectionExpanded) {
                 otherApps.forEach { app ->
-                    val row = appRowCache.getOrPut(app.packageName) {
-                        createAppRow(app)
-                    }
+                    val row = getCachedAppRow(app)
 
                     appList.addView(
                         row,
@@ -1759,7 +1758,23 @@ class MainActivity : Activity() {
         updateSelectedCounters()
     }
 
-    // Creates a row once. showApps() reuses the cached instance afterwards.
+    // Reuse recently displayed rows, while bounding the cache to control memory use.
+    private fun getCachedAppRow(app: AppInfo): LinearLayout {
+        appRowCache[app.packageName]?.let { return it }
+
+        val row = createAppRow(app)
+        appRowCache[app.packageName] = row
+
+        while (appRowCache.size > maxCachedAppRows) {
+            val oldestPackage = appRowCache.entries.iterator().next().key
+            appRowCache.remove(oldestPackage)
+            appCheckBoxCache.remove(oldestPackage)
+        }
+
+        return row
+    }
+
+    // Creates a row once. showApps() reuses cached instances while they remain in the LRU cache.
     private fun createAppRow(app: AppInfo): LinearLayout {
 
         val isSelected = selectedGames.contains(app.packageName)

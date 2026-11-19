@@ -65,6 +65,9 @@ class MainActivity : Activity() {
     private var protectionRequestPending = false
     private var receiverRegistered = false
 
+    private var selectedSectionExpanded = true
+    private var otherSectionExpanded = true
+
     private var protectionState =
         GameFirewallVpnService.STATUS_STOPPED
 
@@ -242,7 +245,6 @@ class MainActivity : Activity() {
         )
 
         buildScreen()
-
         showApps()
         updateProtectionUi()
     }
@@ -526,7 +528,6 @@ class MainActivity : Activity() {
         }
 
         topRow.addView(protectionStatusText)
-
         card.addView(topRow)
 
         val countRow = LinearLayout(this).apply {
@@ -711,7 +712,6 @@ class MainActivity : Activity() {
         }
 
         heading.addView(sectionCountText)
-
         parent.addView(heading)
 
         addVerticalSpace(parent, 13)
@@ -838,6 +838,126 @@ class MainActivity : Activity() {
         parent.addView(appList)
 
         updateTabButtons()
+    }
+
+    // --------------------------------------------------
+    // Collapsible application group header
+    // --------------------------------------------------
+
+    private fun createGroupHeader(
+        title: String,
+        count: Int,
+        expanded: Boolean,
+        selectedGroup: Boolean,
+        onClick: () -> Unit
+    ): LinearLayout {
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            setPadding(
+                dp(13),
+                dp(12),
+                dp(13),
+                dp(12)
+            )
+
+            background = makeCard(
+                if (selectedGroup) {
+                    Color.rgb(19, 48, 70)
+                } else {
+                    cardLightColor
+                },
+                12
+            )
+
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                onClick()
+            }
+        }
+
+        val indicator = View(this).apply {
+            background = makeCard(
+                if (selectedGroup) {
+                    accentColor
+                } else {
+                    secondaryColor
+                },
+                4
+            )
+        }
+
+        header.addView(
+            indicator,
+            LinearLayout.LayoutParams(
+                dp(4),
+                dp(23)
+            )
+        )
+
+        val titleText = makeText(
+            title,
+            12f,
+            if (selectedGroup) accentColor else textColor,
+            true
+        )
+
+        header.addView(
+            titleText,
+            LinearLayout.LayoutParams(
+                0,
+                -2,
+                1f
+            ).apply {
+                marginStart = dp(10)
+            }
+        )
+
+        val countText = makeText(
+            "$count",
+            11f,
+            secondaryColor,
+            true
+        ).apply {
+            gravity = Gravity.CENTER
+            setPadding(
+                dp(9),
+                dp(4),
+                dp(9),
+                dp(4)
+            )
+
+            background = makeCard(
+                Color.rgb(39, 57, 76),
+                20
+            )
+        }
+
+        header.addView(countText)
+
+        val arrow = makeText(
+            if (expanded) "⌃" else "⌄",
+            20f,
+            secondaryColor,
+            true
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        header.addView(
+            arrow,
+            LinearLayout.LayoutParams(
+                dp(30),
+                dp(30)
+            ).apply {
+                marginStart = dp(5)
+            }
+        )
+
+        return header
     }
 
     // --------------------------------------------------
@@ -1215,7 +1335,7 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
-    // Application list
+    // Application list with two collapsible sections
     // --------------------------------------------------
 
     private fun showApps() {
@@ -1241,14 +1361,15 @@ class MainActivity : Activity() {
             )
         }
 
-        // Selected apps always appear first.
-        val apps = filteredApps.sortedWith(
-            compareBy<AppInfo> {
-                !selectedGames.contains(it.packageName)
-            }
-        )
+        val selectedApps = filteredApps.filter {
+            selectedGames.contains(it.packageName)
+        }
 
-        if (apps.isEmpty()) {
+        val otherApps = filteredApps.filter {
+            !selectedGames.contains(it.packageName)
+        }
+
+        if (filteredApps.isEmpty()) {
 
             val emptyContainer = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1264,23 +1385,21 @@ class MainActivity : Activity() {
                 background = makeCard(cardColor, 15)
             }
 
-            val emptyTitle = makeText(
-                "No applications found",
-                15f,
-                textColor,
-                true
+            emptyContainer.addView(
+                makeText(
+                    "No applications found",
+                    15f,
+                    textColor,
+                    true
+                )
             )
-
-            val emptySubtitle = makeText(
-                "Try another search term",
-                12f,
-                secondaryColor
-            )
-
-            emptyContainer.addView(emptyTitle)
 
             emptyContainer.addView(
-                emptySubtitle,
+                makeText(
+                    "Try another search term",
+                    12f,
+                    secondaryColor
+                ),
                 LinearLayout.LayoutParams(
                     -2,
                     -2
@@ -1301,8 +1420,72 @@ class MainActivity : Activity() {
             return
         }
 
-        for (app in apps) {
-            addAppRow(app)
+        // Selected applications section
+        if (selectedApps.isNotEmpty()) {
+
+            val selectedHeader = createGroupHeader(
+                title = "SELECTED APPS",
+                count = selectedApps.size,
+                expanded = selectedSectionExpanded,
+                selectedGroup = true
+            ) {
+                selectedSectionExpanded =
+                    !selectedSectionExpanded
+
+                showApps()
+            }
+
+            appList.addView(
+                selectedHeader,
+                LinearLayout.LayoutParams(
+                    -1,
+                    -2
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+
+            if (selectedSectionExpanded) {
+
+                for (app in selectedApps) {
+                    addAppRow(app)
+                }
+
+                addVerticalSpace(appList, 12)
+            }
+        }
+
+        // Other applications section
+        if (otherApps.isNotEmpty()) {
+
+            val otherHeader = createGroupHeader(
+                title = "OTHER APPLICATIONS",
+                count = otherApps.size,
+                expanded = otherSectionExpanded,
+                selectedGroup = false
+            ) {
+                otherSectionExpanded =
+                    !otherSectionExpanded
+
+                showApps()
+            }
+
+            appList.addView(
+                otherHeader,
+                LinearLayout.LayoutParams(
+                    -1,
+                    -2
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+
+            if (otherSectionExpanded) {
+
+                for (app in otherApps) {
+                    addAppRow(app)
+                }
+            }
         }
 
         updateSelectedCounters()
@@ -1420,6 +1603,7 @@ class MainActivity : Activity() {
                     selectedGames
                 )
 
+                // The app moves automatically to its new section.
                 showApps()
             }
         }

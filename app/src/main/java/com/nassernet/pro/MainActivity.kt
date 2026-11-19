@@ -65,8 +65,9 @@ class MainActivity : Activity() {
     private var protectionRequestPending = false
     private var receiverRegistered = false
 
-    private var selectedSectionExpanded = true
-    private var otherSectionExpanded = true
+    // Both sections start collapsed whenever the activity is created.
+    private var selectedSectionExpanded = false
+    private var otherSectionExpanded = false
 
     private var protectionState =
         GameFirewallVpnService.STATUS_STOPPED
@@ -305,9 +306,7 @@ class MainActivity : Activity() {
         }
 
         try {
-
             startService(intent)
-
         } catch (exception: Exception) {
 
             protectionState =
@@ -874,6 +873,7 @@ class MainActivity : Activity() {
 
             isClickable = true
             isFocusable = true
+
             setOnClickListener {
                 onClick()
             }
@@ -923,6 +923,7 @@ class MainActivity : Activity() {
             true
         ).apply {
             gravity = Gravity.CENTER
+
             setPadding(
                 dp(9),
                 dp(4),
@@ -1167,9 +1168,7 @@ class MainActivity : Activity() {
         }
 
         try {
-
             startService(intent)
-
         } catch (exception: Exception) {
 
             Toast.makeText(
@@ -1603,7 +1602,7 @@ class MainActivity : Activity() {
                     selectedGames
                 )
 
-                // The app moves automatically to its new section.
+                // Move the app to its new section.
                 showApps()
             }
         }

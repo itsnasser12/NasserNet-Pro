@@ -7,40 +7,39 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 
 class InstalledAppsRepository(
-    private val context: Context
+    context: Context
 ) {
 
+    private val appContext = context.applicationContext
+
     private val packageManager: PackageManager =
-        context.packageManager
+        appContext.packageManager
 
-    fun getUserApps(): List<AppInfo> {
-        return getInstalledApps().filter {
-            !it.isSystemApp
-        }
-    }
+    @Volatile
+    private var cachedApps: List<AppInfo>? = null
 
-    fun getSystemApps(): List<AppInfo> {
-        return getInstalledApps().filter {
-            it.isSystemApp
-        }
-    }
-
+    @Synchronized
     private fun getInstalledApps(): List<AppInfo> {
+
+        cachedApps?.let {
+            return it
+        }
 
         val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
 
-        return packageManager
+        val loadedApps = packageManager
             .queryIntentActivities(launcherIntent, 0)
             .mapNotNull { resolveInfo ->
 
-                val appInfo = resolveInfo.activityInfo?.applicationInfo
-                    ?: return@mapNotNull null
+                val appInfo =
+                    resolveInfo.activityInfo?.applicationInfo
+                        ?: return@mapNotNull null
 
                 val packageName = appInfo.packageName
 
-                if (packageName == context.packageName) {
+                if (packageName == appContext.packageName) {
                     return@mapNotNull null
                 }
 
@@ -56,6 +55,29 @@ class InstalledAppsRepository(
                 )
             }
             .distinctBy { it.packageName }
-            .sortedBy { it.appName.lowercase() }
+            .sortedBy {
+                it.appName.lowercase()
+            }
+
+        cachedApps = loadedApps
+
+        return loadedApps
+    }
+
+    fun getUserApps(): List<AppInfo> {
+        return getInstalledApps().filter {
+            !it.isSystemApp
+        }
+    }
+
+    fun getSystemApps(): List<AppInfo> {
+        return getInstalledApps().filter {
+            it.isSystemApp
+        }
+    }
+
+    @Synchronized
+    fun refresh() {
+        cachedApps = null
     }
 }

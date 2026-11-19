@@ -18,8 +18,8 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.inputmethod.EditorInfo
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -51,7 +51,6 @@ class MainActivity : Activity() {
     private lateinit var repository: InstalledAppsRepository
 
     private lateinit var appList: LinearLayout
-    private lateinit var statusText: TextView
     private lateinit var protectionStatusText: TextView
     private lateinit var protectionDescriptionText: TextView
     private lateinit var userAppsButton: Button
@@ -114,7 +113,7 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
-    // Basic UI helpers
+    // UI helpers
     // --------------------------------------------------
 
     private fun dp(value: Int): Int {
@@ -243,6 +242,7 @@ class MainActivity : Activity() {
         )
 
         buildScreen()
+
         showApps()
         updateProtectionUi()
     }
@@ -355,7 +355,6 @@ class MainActivity : Activity() {
             setBackgroundColor(backgroundColor)
         }
 
-        // Scrollable application content
         val scrollView = ScrollView(this).apply {
             isFillViewport = false
             clipToPadding = false
@@ -366,16 +365,9 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Header
         buildHeader(content)
-
-        // Protection status
         buildProtectionCard(content)
-
-        // Start / Stop buttons
         buildProtectionButtons(content)
-
-        // Applications section
         buildApplicationsSection(content)
 
         scrollView.addView(content)
@@ -519,6 +511,7 @@ class MainActivity : Activity() {
             true
         ).apply {
             gravity = Gravity.CENTER
+
             setPadding(
                 dp(12),
                 dp(5),
@@ -593,7 +586,6 @@ class MainActivity : Activity() {
             }
         )
 
-        // Selected apps progress indicator
         val progressBackground = View(this).apply {
             background = makeCard(
                 Color.rgb(39, 57, 76),
@@ -601,26 +593,8 @@ class MainActivity : Activity() {
             )
         }
 
-        val progressFill = View(this).apply {
-            background = makeCard(
-                accentColor,
-                10
-            )
-        }
-
-        val progressContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(
-                progressBackground,
-                LinearLayout.LayoutParams(
-                    -1,
-                    dp(5)
-                )
-            )
-        }
-
         card.addView(
-            progressContainer,
+            progressBackground,
             LinearLayout.LayoutParams(
                 -1,
                 dp(5)
@@ -651,7 +625,6 @@ class MainActivity : Activity() {
             "▶   START PROTECTION",
             greenColor
         ).apply {
-
             setOnClickListener {
                 requestVpnPermission()
             }
@@ -662,7 +635,6 @@ class MainActivity : Activity() {
             Color.rgb(48, 62, 80),
             secondaryColor
         ).apply {
-
             setOnClickListener {
                 stopProtection()
             }
@@ -724,6 +696,7 @@ class MainActivity : Activity() {
             true
         ).apply {
             gravity = Gravity.CENTER
+
             setPadding(
                 dp(10),
                 dp(6),
@@ -743,7 +716,6 @@ class MainActivity : Activity() {
 
         addVerticalSpace(parent, 13)
 
-        // Application tabs
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -798,7 +770,6 @@ class MainActivity : Activity() {
 
         addVerticalSpace(parent, 12)
 
-        // Search field
         searchInput = EditText(this).apply {
             hint = "⌕   Search applications..."
             setHintTextColor(secondaryColor)
@@ -1282,12 +1253,14 @@ class MainActivity : Activity() {
             val emptyContainer = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
+
                 setPadding(
                     dp(15),
                     dp(30),
                     dp(15),
                     dp(30)
                 )
+
                 background = makeCard(cardColor, 15)
             }
 
@@ -1365,7 +1338,6 @@ class MainActivity : Activity() {
             )
         }
 
-        // App icon
         val icon = ImageView(this).apply {
             setImageDrawable(app.appIcon)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -1379,11 +1351,11 @@ class MainActivity : Activity() {
             )
         )
 
-        // App checkbox
         val checkBox = CheckBox(this).apply {
 
             text = app.appName
             textSize = 13.5f
+
             setTextColor(
                 if (isSelected) {
                     Color.WHITE
@@ -1448,7 +1420,6 @@ class MainActivity : Activity() {
                     selectedGames
                 )
 
-                // Refresh list to move selected apps to the top.
                 showApps()
             }
         }
@@ -1464,7 +1435,6 @@ class MainActivity : Activity() {
             }
         )
 
-        // Selected indicator
         if (isSelected) {
 
             val selectedIndicator = TextView(this).apply {
@@ -1501,18 +1471,14 @@ class MainActivity : Activity() {
 
     private fun updateSelectedCounters() {
 
-        if (!::selectedCountText.isInitialized) {
-            return
-        }
-
         val count = selectedGames.size
 
-        selectedCountText.text = count.toString()
+        if (::selectedCountText.isInitialized) {
+            selectedCountText.text = count.toString()
+        }
 
-        sectionCountText.text =
-            "$count SELECTED"
-
-        statusText.text =
-            "Selected games: $count"
+        if (::sectionCountText.isInitialized) {
+            sectionCountText.text = "$count SELECTED"
+        }
     }
 }

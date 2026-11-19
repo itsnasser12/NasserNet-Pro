@@ -153,8 +153,6 @@ class MainActivity : Activity() {
         super.onStart()
 
         registerVpnStatusReceiver()
-
-        // Retrieve the actual VPN status whenever the app opens.
         requestCurrentVpnStatus()
     }
 
@@ -819,7 +817,8 @@ class MainActivity : Activity() {
 
         val query = searchInput.text.toString().trim()
 
-        val apps = allApps.filter { app ->
+        // First filter by the search query.
+        val filteredApps = allApps.filter { app ->
             app.appName.contains(
                 query,
                 ignoreCase = true
@@ -828,6 +827,14 @@ class MainActivity : Activity() {
                 ignoreCase = true
             )
         }
+
+        // Move selected apps to the top.
+        // The original order inside each group is preserved.
+        val apps = filteredApps.sortedWith(
+            compareBy<AppInfo> {
+                !selectedGames.contains(it.packageName)
+            }
+        )
 
         if (apps.isEmpty()) {
 
@@ -933,6 +940,9 @@ class MainActivity : Activity() {
                 )
 
                 updateStatus()
+
+                // Refresh the list so the selected app moves to the top.
+                showApps()
             }
         }
 
